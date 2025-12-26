@@ -11,7 +11,13 @@
   while (!Spicetify.showNotification) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  const { CosmosAsync, ContextMenu, URI, React: react, ReactDOM: reactDOM } = Spicetify;
+  const {
+    CosmosAsync,
+    ContextMenu,
+    URI,
+    React: react,
+    ReactDOM: reactDOM,
+  } = Spicetify;
   const { useState, useEffect } = react;
   if (!(CosmosAsync && URI)) {
     setTimeout(djInfoList, 300);
@@ -20,7 +26,9 @@
 
   let CONFIG;
   try {
-    CONFIG = JSON.parse(Spicetify.LocalStorage.get("dj-info-config") || "error");
+    CONFIG = JSON.parse(
+      Spicetify.LocalStorage.get("dj-info-config") || "error"
+    );
   } catch {
     CONFIG = {
       isPlaylistEnabled: true,
@@ -85,11 +93,13 @@
       console.log("Error: Could not get tracklist element");
       return null;
     }
+
     return (
       values[0]?.pendingProps?.children[0]?.props?.children?.props?.uri ||
-      values[0]?.pendingProps?.children[0]?.props?.children?.props?.children?.props?.uri ||
-      values[0]?.pendingProps?.children[0]?.props?.children?.props?.children?.props?.children?.props
-        ?.uri ||
+      values[0]?.pendingProps?.children[0]?.props?.children?.props?.children
+        ?.props?.uri ||
+      values[0]?.pendingProps?.children[0]?.props?.children?.props?.children
+        ?.props?.children?.props?.uri ||
       values[0]?.pendingProps?.children[0]?.props?.children[0]?.props?.uri
     );
   }
@@ -427,16 +437,17 @@ button.btn:hover {
   var djTrackInfo = class {
     // Class for DJ Info in local storage
     constructor(res, resTrack) {
-      if ((res.code < 200 && res.code > 300)) {
-        console.log("Error: " + res.code);
-        return;
-      }
-
       this.key = res.track.key;
       this.mode = res.track.mode;
       this.tempo = Math.round(res.track.tempo);
       this.popularity = res.track.popularity;
-      // this.release_date = res.album.release_date.split("-")[0];
+
+      if (resTrack == null || resTrack.album.release_date != null) {
+        this.release_date = null;
+        return;
+      }
+
+      this.release_date = res.album.release_date.split("-")[0];
     }
   };
 
@@ -450,10 +461,10 @@ button.btn:hover {
       const run = async () => {
         const now = Date.now();
         const waitMs = Math.max(0, minIntervalMs - (now - lastRunAt));
+        lastRunAt = now + waitMs;
         if (waitMs) {
           await new Promise((resolve) => setTimeout(resolve, waitMs));
         }
-        lastRunAt = Date.now();
         return fn(...args);
       };
       const scheduled = chain.then(run, run);
@@ -464,24 +475,40 @@ button.btn:hover {
 
   const getTrackInfoFromApi = rateLimit(async (id) => {
     // Use Spotify's internal audio-features endpoint instead of the deprecated public API.
-    var audioRes = null;
+    var audioRes,
+      resTrack = null;
     try {
       audioRes = await Spicetify.getAudioData("spotify:track:" + id);
     } catch (error) {
       console.log("DJ Info: Could not get audio features for track id " + id);
-      audioRes = null;
     }
 
-    var res = (audioRes && audioRes.audio_features && audioRes.audio_features[0]) || audioRes;
+    var res =
+      (audioRes && audioRes.audio_features && audioRes.audio_features[0]) ||
+      audioRes;
     // I had to remove energy and danceability because I haven't found a way to get them from the internal API.
     // Maybe I just had a bad luck with my test tracks.
 
-    // var resTrack = await CosmosAsync.get("https://api.spotify.com/v1/tracks/" + id);
-    // if (resTrack == undefined) {
-    //   console.log("DJ Info: Could not get track info for track id " + id);
-    // }
+    // If res is not a valid response, we're not even gonna try.
+    if (res.code < 200 || res.code > 300) {
+      console.log("djTrackInfo failed to get res, status: " + res.code);
+      return;
+    }
 
-    var info = new djTrackInfo(res, null);
+    try {
+      resTrack = await CosmosAsync.get(
+        "https://api.spotify.com/v1/tracks/" + id
+      );
+    } catch (error) {
+      console.log("DJ Info: Could not get track info for track id " + id);
+    }
+
+    if (resTrack.code < 200 || resTrack.code > 300) {
+      console.log("djTrackInfo failed to get res, status: " + res.code);
+      resTrack = null;
+    }
+
+    var info = new djTrackInfo(res, resTrack);
     localStorage.setItem("djinfo-" + id, JSON.stringify(info));
     return info;
   }, TRACK_INFO_MIN_INTERVAL_MS);
@@ -489,7 +516,10 @@ button.btn:hover {
   const getTrackInfo = async (id) => {
     // get Track Info from local storage or request
     const djTrackInfoFromLocal = localStorage.getItem("djinfo-" + id);
-    if ((djTrackInfoFromLocal != null) && (JSON.parse(djTrackInfoFromLocal).key != null)) {
+    if (
+      djTrackInfoFromLocal != null &&
+      JSON.parse(djTrackInfoFromLocal).key != null
+    ) {
       return JSON.parse(djTrackInfoFromLocal);
     }
     return getTrackInfoFromApi(id);
@@ -498,14 +528,20 @@ button.btn:hover {
   // update Tracklist and insert DJ Info
   updateTracklist = async () => {
     if (!CONFIG.isPlaylistEnabled) return;
-    const tracklists = document.getElementsByClassName("main-trackList-indexable");
+    const tracklists = document.getElementsByClassName(
+      "main-trackList-indexable"
+    );
     for (const tracklist_ of tracklists) {
       if (!tracklist_) continue;
       // Adding DJ Info Column Header
-      const tracklistHeader = tracklist_.querySelector(".main-trackList-trackListHeaderRow");
+      const tracklistHeader = tracklist_.querySelector(
+        ".main-trackList-trackListHeaderRow"
+      );
       if (tracklistHeader && !tracklistHeader.querySelector(".djinfoheader")) {
         // No tracklist header on Artist page
-        let lastColumn = tracklistHeader.querySelector(".main-trackList-rowSectionEnd");
+        let lastColumn = tracklistHeader.querySelector(
+          ".main-trackList-rowSectionEnd"
+        );
         let colIndexInt = parseInt(lastColumn.getAttribute("aria-colindex"));
 
         lastColumn.setAttribute("aria-colindex", (colIndexInt + 1).toString());
@@ -540,11 +576,15 @@ button.btn:hover {
         headerColumn.appendChild(btn);
       }
 
-      const tracks = tracklist_.getElementsByClassName("main-trackList-trackListRow");
+      const tracks = tracklist_.getElementsByClassName(
+        "main-trackList-trackListRow"
+      );
 
       for (const track of tracks) {
         const hasdjinfo = track.getElementsByClassName("djinfo").length > 0;
         const trackUri = getTracklistTrackUri(track);
+        if (trackUri == null || trackUri == undefined) continue;
+
         const isTrack = trackUri.includes("track");
 
         let djInfoColumn = track.querySelector(".djInfoList");
@@ -552,7 +592,10 @@ button.btn:hover {
           // Add column for djInfos
           let lastColumn = track.querySelector(".main-trackList-rowSectionEnd");
           let colIndexInt = parseInt(lastColumn.getAttribute("aria-colindex"));
-          lastColumn.setAttribute("aria-colindex", (colIndexInt + 1).toString());
+          lastColumn.setAttribute(
+            "aria-colindex",
+            (colIndexInt + 1).toString()
+          );
           djInfoColumn = document.createElement("div");
           djInfoColumn.setAttribute("aria-colindex", colIndexInt.toString());
           // djInfoColumn.role = "gridcell"
@@ -587,10 +630,17 @@ button.btn:hover {
           var keyInNotation = getKeyInNotation(info.key, info.mode);
           // generate Display Text
           display_text = [];
-          if (CONFIG.isKeyEnabled || CONFIG.isCamelotEnabled) display_text.push(`${keyInNotation}`);
-          if (CONFIG.isBPMEnabled) display_text.push(`${info.tempo} ♫`);
-          if (CONFIG.isPopularityEnabled) display_text.push(`♥ ${info.popularity}`);
-          if (CONFIG.isYearEnabled) display_text.push(`${info.release_date}`);
+          if (
+            (CONFIG.isKeyEnabled && info.key != null && info.mode != null) ||
+            CONFIG.isCamelotEnabled
+          )
+            display_text.push(`${keyInNotation}`);
+          if (CONFIG.isBPMEnabled && info.tempo != null)
+            display_text.push(`${info.tempo} ♫`);
+          if (CONFIG.isPopularityEnabled && info.popularity != null)
+            display_text.push(`♥ ${info.popularity}`);
+          if (CONFIG.isYearEnabled && info.release_date != null)
+            display_text.push(`${info.release_date}`);
           display_text = display_text.join(" | ");
           text.innerHTML = display_text;
           text.classList.add("djinfo");
@@ -607,9 +657,13 @@ button.btn:hover {
       console.log("no recommendations found");
       return;
     }
-    const tracklists = recommendations.getElementsByClassName("main-trackList-trackList");
+    const tracklists = recommendations.getElementsByClassName(
+      "main-trackList-trackList"
+    );
     for (const tracklist_ of tracklists) {
-      const tracks = tracklist_.getElementsByClassName("main-trackList-trackListRow");
+      const tracks = tracklist_.getElementsByClassName(
+        "main-trackList-trackListRow"
+      );
       for (const track of tracks) {
         const hasdjinfo = track.getElementsByClassName("djinfo").length > 0;
         const trackUri = getTracklistTrackUri(track);
@@ -620,12 +674,17 @@ button.btn:hover {
           // Add column for djInfos
           let lastColumn = track.querySelector(".main-trackList-rowSectionEnd");
           let colIndexInt = parseInt(lastColumn.getAttribute("aria-colindex"));
-          let unusedColumn = track.querySelector(`[aria-colindex="${colIndexInt - 1}"]`);
+          let unusedColumn = track.querySelector(
+            `[aria-colindex="${colIndexInt - 1}"]`
+          );
           if (unusedColumn) {
             track.removeChild(unusedColumn);
             colIndexInt--;
           }
-          lastColumn.setAttribute("aria-colindex", (colIndexInt + 1).toString());
+          lastColumn.setAttribute(
+            "aria-colindex",
+            (colIndexInt + 1).toString()
+          );
           djInfoColumn = document.createElement("div");
           djInfoColumn.setAttribute("aria-colindex", colIndexInt.toString());
           // djInfoColumn.role = "gridcell"
@@ -652,10 +711,18 @@ button.btn:hover {
           var keyInNotation = getKeyInNotation(info.key, info.mode);
           // generate Display Text
           display_text = [];
-          if (CONFIG.isKeyEnabled || CONFIG.isCamelotEnabled) display_text.push(`${keyInNotation}`);
-          if (CONFIG.isBPMEnabled) display_text.push(`${info.tempo} ♫`);
-          if (CONFIG.isPopularityEnabled) display_text.push(`♥ ${info.popularity}`);
-          if (CONFIG.isYearEnabled) display_text.push(`${info.release_date}`);
+          if (
+            (CONFIG.isKeyEnabled || CONFIG.isCamelotEnabled) &&
+            info.key != null &&
+            info.mode != null
+          )
+            display_text.push(`${keyInNotation}`);
+          if (CONFIG.isBPMEnabled && info.tempo != null)
+            display_text.push(`${info.tempo} ♫`);
+          if (CONFIG.isPopularityEnabled && info.popularity != null)
+            display_text.push(`♥ ${info.popularity}`);
+          if (CONFIG.isYearEnabled && info.release_date != null)
+            display_text.push(`${info.release_date}`);
           display_text = display_text.join(" | ");
           text.innerHTML = display_text;
           text.classList.add("djinfo");
@@ -683,11 +750,18 @@ button.btn:hover {
     const id = uri.split(":")[2];
     var info = await getTrackInfo(id);
     display_text = [];
-    if (CONFIG.isKeyEnabled || CONFIG.isCamelotEnabled)
+    if (
+      (CONFIG.isKeyEnabled || CONFIG.isCamelotEnabled) &&
+      info.key != null &&
+      info.mode != null
+    )
       display_text.push(`${getKeyInNotation(info.key, info.mode)}`);
-    if (CONFIG.isBPMEnabled) display_text.push(`${info.tempo} ♫`);
-    if (CONFIG.isPopularityEnabled) display_text.push(`♥ ${info.popularity}`);
-    if (CONFIG.isYearEnabled) display_text.push(`${info.release_date}`);
+    if (CONFIG.isBPMEnabled && info.tempo != null)
+      display_text.push(`${info.tempo} ♫`);
+    if (CONFIG.isPopularityEnabled && info.popularity != null)
+      display_text.push(`♥ ${info.popularity}`);
+    if (CONFIG.isYearEnabled && info.release_date != null && info.release)
+      display_text.push(`${info.release_date}`);
     display_text = display_text.join("<br>");
 
     nowPlayingWidgetdjInfoData.innerHTML = display_text;
@@ -724,8 +798,13 @@ button.btn:hover {
     }
 
     oldNowPlayingWidget = nowPlayingWidget;
-    nowPlayingWidget = document.querySelector(".main-nowPlayingWidget-nowPlaying");
-    if (nowPlayingWidget && !nowPlayingWidget.isEqualNode(oldNowPlayingWidget)) {
+    nowPlayingWidget = document.querySelector(
+      ".main-nowPlayingWidget-nowPlaying"
+    );
+    if (
+      nowPlayingWidget &&
+      !nowPlayingWidget.isEqualNode(oldNowPlayingWidget)
+    ) {
       nowPlayingWidgetdjInfoData = document.createElement("p");
       nowPlayingWidgetdjInfoData.style.marginLeft = "4px";
       nowPlayingWidgetdjInfoData.style.marginRight = "4px";
@@ -744,10 +823,17 @@ button.btn:hover {
     }
 
     oldRecommendation = toprecommendation;
-    recommendations = document.getElementsByClassName("playlist-playlist-recommendedTrackList")[0];
+    recommendations = document.getElementsByClassName(
+      "playlist-playlist-recommendedTrackList"
+    )[0];
     if (recommendations) {
-      toprecommendation = recommendations.getElementsByClassName("main-trackList-trackListRow")[0];
-      if (toprecommendation && !toprecommendation.isEqualNode(oldRecommendation)) {
+      toprecommendation = recommendations.getElementsByClassName(
+        "main-trackList-trackListRow"
+      )[0];
+      if (
+        toprecommendation &&
+        !toprecommendation.isEqualNode(oldRecommendation)
+      ) {
         console.log("recommendations found");
         updateRecommendations();
       }
